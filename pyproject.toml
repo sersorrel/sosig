@@ -1,0 +1,6 @@
+[tool.setuptools_scm]
+# this section existing enables version number inference
+
+[build-system]
+requires = ["setuptools >= 46.0", "setuptools-scm[toml] >= 3.5", "wheel >= 0.34"]
+build-backend = "setuptools.build_meta"
