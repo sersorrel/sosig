@@ -7,10 +7,10 @@ run it (as in `sosig sosig.cfg`). The config file uses Python's
 configparser format, and should look something like this:
 
 ```ini
-[DiscordBridge]
+[DiscordEndpoint]
 token = ...
 
-[SlackBridge]
+[SlackEndpoint]
 token = ...
 ```
 
