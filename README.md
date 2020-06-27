@@ -1,4 +1,14 @@
-# sosig: Slack-tO-diScord brIdGe
+# sosig
+
+Slack-tO-diScord brIdGe
+
+## Installation
+
+This is not well-documented at the moment, sorry – essentially you have
+to create a "classic app" in the Slack workspace you want to bridge and
+create an application on Discord (at a minimum, it needs to be able to
+send messages and manage webhooks), then put the tokens for each service
+in the config file.
 
 ## Configuration
 
@@ -15,6 +25,14 @@ token = ...
 ```
 
 It's not yet possible to configure message routing in the config file.
+
+## Contributing
+
+Contributions are welcome!
+
+Everyone interacting with this project is expected to abide by the terms
+of the Contributor Covenant Code of Conduct. Violations should be
+reported to coc-enforcement-sosig@sorrel.sh.
 
 ## Copyright
 
