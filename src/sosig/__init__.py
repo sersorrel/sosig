@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import asyncio
-import configparser
 import importlib.metadata
 import itertools
 import logging
 import sys
 from collections import defaultdict
+from typing import Any, Dict, List, NoReturn, Set, Tuple, Type, TypeVar
 
-from sosig.endpoints import DiscordEndpoint, SlackEndpoint
+import tomlkit
+
+import sosig.endpoints
+from sosig.endpoints.base import Endpoint
 
 __all__ = ["main"]
 
@@ -19,6 +22,12 @@ logging.basicConfig(
 logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 
+T = TypeVar("T")
+# Really Endpoint[L] should be Endpoint.L, but Python doesn't have
+# support for associated types like that.
+L = Any
+
+
 class DevNullQueue(asyncio.Queue):
     """A subclass of Queue that is always empty.
 
@@ -26,26 +35,30 @@ class DevNullQueue(asyncio.Queue):
     coroutines that get an item from the queue will block forever.
     """
 
-    def _init(self, maxsize):
-        self._queue = []  # necessary, internals look at len(self._queue)
+    def _init(self, maxsize: int) -> None:
+        self._queue: List[None] = []  # necessary, internals look at len(self._queue)
 
-    def _get(self):
+    def _get(self) -> T:
         pass
 
-    def _put(self, item):
+    def _put(self, item: T) -> None:
         pass
 
 
-async def message_pusher(source, dest):
-    logging.getLogger(__name__ + ".message_pusher").debug(
-        "starting message pusher from %r to %r", source, dest
+async def broadcaster(source: asyncio.Queue[T], *dests: asyncio.Queue[T]) -> NoReturn:
+    logging.getLogger(__name__ + ".broadcaster").debug(
+        "starting broadcaster from %r to %r", source, dests
     )
     while True:
-        await dest.put(await source.get())
+        msg = await source.get()
+        for dest in dests:
+            await dest.put(msg)
         source.task_done()
 
 
-async def main():
+async def main() -> None:
+    assert sys.version_info >= (3, 8)
+
     if len(sys.argv) != 2:
         print(f"Usage: {sys.argv[0]} CONFIG_FILE")
         sys.exit(1)
@@ -54,42 +67,68 @@ async def main():
     logger.info("starting %s %s", __name__, importlib.metadata.version(__name__))
 
     config_file = sys.argv[1]
-    config_parser = configparser.ConfigParser(strict=True, interpolation=None)
-    config_parser.read(config_file)
+    with open(config_file) as f:
+        config = tomlkit.parse(f.read())
 
-    # Set up the endpoints.
-    CONFIG = {
-        DiscordEndpoint: ["general"],
-        SlackEndpoint: ["general"],
-    }
-    endpoints = []
-    for endpoint, cfg in CONFIG.items():
-        endpoints.append(
-            endpoint(
-                sending={chan: asyncio.Queue() for chan in cfg},
-                received=defaultdict(
-                    DevNullQueue, {chan: asyncio.Queue() for chan in cfg}
-                ),
-                config=config_parser[endpoint.__name__],
+    # A general note on design here: originally, I wanted all channels
+    # (where a "channel" is an (endpoint, location) pair) that ended up
+    # in the same room to receive into the same queue, which would mean
+    # we could have a single broadcaster per room which would read from
+    # that queue and broadcast into the send queues of all channels in
+    # that room. However, I couldn't see a good way to avoid
+    # rebroadcasting a message into the send queue of the channel it
+    # arrived from if I did that (and I didn't want to make that the
+    # responsibility of the endpoints, because that shouldn't be their
+    # problem), so instead we have a single broadcaster per channel,
+    # which broadcasts into every other channel in the same room.
+
+    # Work out what endpoints we need to set up, and how they need to be linked.
+    required_endpoints: Dict[Type[Endpoint[L]], Set[L]] = defaultdict(set)
+    rooms: List[Dict[Type[Endpoint[L]], Set[L]]] = []
+    for room in config.get("room", []):
+        this_room = defaultdict(set)
+        for endpoint_config in room["endpoints"]:
+            endpoint_type: Type[Endpoint[L]] = getattr(
+                sosig.endpoints, endpoint_config["name"], None
             )
+            assert endpoint_type is not None, "custom endpoints not supported (yet)"
+            location = endpoint_type.parse_location(endpoint_config["location"])
+            required_endpoints[endpoint_type].add(location)
+            this_room[endpoint_type].add(location)
+        rooms.append(this_room)
+
+    # Set up those endpoints.
+    endpoints: Dict[Type[Endpoint[L]], Endpoint[L]] = {}
+    for endpoint_type, locations in required_endpoints.items():
+        endpoints[endpoint_type] = endpoint_type(
+            sending={loc: asyncio.Queue() for loc in locations},
+            received=defaultdict(
+                DevNullQueue, {loc: asyncio.Queue() for loc in locations}
+            ),
+            config=config[endpoint_type.__name__],
         )
+
     # Join the relevant endpoints together.
-    LINKS = [
-        ((DiscordEndpoint, "general"), (SlackEndpoint, "general")),
-        ((SlackEndpoint, "general"), (DiscordEndpoint, "general")),
-    ]
-    broadcasters = []  # TODO bad name
-    for source, dest in LINKS:
-        source_endpoint = next(endpoint for endpoint in endpoints if type(endpoint) == source[0])
-        dest_endpoint = next(endpoint for endpoint in endpoints if type(endpoint) == dest[0])
-        broadcasters.append(
-            message_pusher(
-                source_endpoint.received[source[1]], dest_endpoint.sending[dest[1]]
-            )
-        )
+    broadcasters = []
+    for room in rooms:
+        for endpoint_type, endpoint_locations in room.items():
+            endpoint = endpoints[endpoint_type]
+            for loc in endpoint_locations:
+                broadcasters.append(
+                    broadcaster(
+                        endpoint.received[loc],
+                        *[
+                            endpoints[_endpoint_type].sending[_loc]
+                            for _endpoint_type, _endpoint_locations in room.items()
+                            for _loc in _endpoint_locations
+                            if (_endpoint_type, _loc) != (endpoint_type, loc)
+                        ],
+                    )
+                )
 
+    # Wrap the endpoints and the broadcasters in an asyncio.Task.
     tasks = itertools.chain(
-        (asyncio.create_task(endpoint.run()) for endpoint in endpoints),
+        (asyncio.create_task(endpoint.run()) for endpoint in endpoints.values()),
         map(asyncio.create_task, broadcasters),
     )
 

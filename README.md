@@ -13,18 +13,22 @@ in the config file.
 ## Configuration
 
 Currently you have to pass the path to the config file to sosig when you
-run it (as in `sosig sosig.cfg`). The config file uses Python's
-configparser format, and should look something like this:
+run it (as in `sosig sosig.toml`). The config file should look something
+like this:
 
-```ini
+```toml
 [DiscordEndpoint]
-token = ...
+token = "..."
 
 [SlackEndpoint]
-token = ...
-```
+token = "xoxb-..."
 
-It's not yet possible to configure message routing in the config file.
+[[room]]
+endpoints = [
+    { name = "DiscordEndpoint", location = "general" },
+    { name = "SlackEndpoint", location = "general" },
+]
+```
 
 ## Contributing
 

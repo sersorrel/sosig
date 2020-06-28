@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import abc
 import asyncio
 import logging
-from typing import Generic, Mapping, NamedTuple, Optional, TypeVar
+from typing import Any, cast, Generic, Hashable, Mapping, NamedTuple, Optional, TypeVar
 
 
-Location = TypeVar("Location")  # some unique id for a channel/server/network/whatever
+Location = TypeVar("Location", bound=Hashable)  # some unique id for a channel/server
 
 
 class Message(NamedTuple):
@@ -15,7 +16,7 @@ class Message(NamedTuple):
     thread_id: Optional[str] = None
 
 
-class Endpoint(Generic[Location]):
+class Endpoint(Generic[Location], metaclass=abc.ABCMeta):
     # messages received from the platform
     received: Mapping[Location, asyncio.Queue[Message]]
     # messages to send to the platform
@@ -37,3 +38,11 @@ class Endpoint(Generic[Location]):
         self.sending = sending
         self.received = received
         self.config = config
+
+    @staticmethod
+    def parse_location(l: Any) -> Location:
+        return cast(Location, l)
+
+    @abc.abstractmethod
+    async def run(self) -> None:
+        pass

@@ -3,7 +3,7 @@ import aiorun
 import sosig
 
 
-def main():
+def main() -> None:
     aiorun.run(sosig.main(), stop_on_unhandled_errors=True)
 
 
