@@ -14,7 +14,7 @@ __all__ = ["main"]
 
 
 logging.basicConfig(
-    format="%(name)20s [%(levelname)s] %(message)s", level=logging.WARNING
+    format="%(name)40s [%(levelname)s] %(message)s", level=logging.WARNING
 )
 logging.getLogger(__name__).setLevel(logging.DEBUG)
 
