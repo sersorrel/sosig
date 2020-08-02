@@ -3,8 +3,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import logging
-from typing import Any, cast, Generic, Hashable, Mapping, NamedTuple, Optional, TypeVar
-
+from typing import Any, Generic, Hashable, Mapping, NamedTuple, Optional, TypeVar, cast
 
 Location = TypeVar("Location", bound=Hashable)  # some unique id for a channel/server
 
