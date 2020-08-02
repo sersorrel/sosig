@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Mapping, MutableMapping
+from typing import Dict, Mapping, MutableMapping
 
 import slack
 
@@ -11,17 +11,17 @@ from sosig.endpoints.base import Endpoint, Message
 class SlackEndpoint(Endpoint):
     user_cache: MutableMapping[str, Mapping]  # key is string id
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.ready = asyncio.Event()
         self.rtm_client = slack.RTMClient(token=self.config["token"], run_async=True)
         self.user_cache = {}
 
-        async def on_hello(rtm_client, web_client, data):
+        async def on_hello(rtm_client, web_client, data) -> None:
             self.logger.debug("HELLO with %s, %s, %s", rtm_client, web_client, data)
             self.web_client = web_client
-            self.channel_name_to_id = {}
-            self.channel_id_to_name = {}
+            self.channel_name_to_id: Dict[str, str] = {}
+            self.channel_id_to_name: Dict[str, str] = {}
             DONE = object()
             cursor = None
             while cursor is not DONE:
@@ -45,7 +45,7 @@ class SlackEndpoint(Endpoint):
             self.bot_id = auth_data["bot_id"]
             self.ready.set()
 
-        async def on_message(rtm_client, web_client, data):
+        async def on_message(rtm_client, web_client, data) -> None:
             subtype = data.get("subtype")
             text = data.get("text")
             hidden = data.get("hidden")
@@ -85,12 +85,12 @@ class SlackEndpoint(Endpoint):
                 user_data = response["user"]
                 assert user_data["id"] == user_id
                 self.user_cache[user_id] = user_data
-                self.logger.debug("got user info %s", data)
+                self.logger.debug("got user info %s", user_data)
                 profile = user_data["profile"]
             username = (
                 profile.get("display_name")
                 or profile.get("real_name")
-                or "slack!" + user["id"]
+                or "slack!" + user_data["id"]
             )
             avatar_url = profile.get("image_original")
             # TODO: handle channels not in the channel cache
