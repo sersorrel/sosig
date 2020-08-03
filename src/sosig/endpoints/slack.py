@@ -72,6 +72,7 @@ class SlackEndpoint(Endpoint):
             self.logger.debug("received message: %s", data)
 
             # TODO: replace this mess with something that branches on the subtype
+            # TODO: work out a better way to get the highest-resolution avatar
             if user_id:
                 if user_id in self.user_cache:
                     user_data = self.user_cache[user_id]
@@ -96,18 +97,16 @@ class SlackEndpoint(Endpoint):
                 )
                 avatar_url = profile.get("image_original")
             else:
+                icons = {}
                 if not (data.get("username") and data.get("icons")):
                     response = await self.web_client.bots_info(bot=bot_id)
                     assert response["ok"]
                     bot_data = response["bot"]
                     assert bot_data["id"] == bot_id
+                    icons.update(bot_data["icons"])
+                icons.update(data.get("icons", {}))
                 username = data.get("username") or bot_data["name"]
-                avatar_url = (
-                    data.get("icons", {}).get("image_original")
-                    or data.get("icons", {}).get("image_72")
-                    or bot_data["icons"].get("image_original")
-                    or bot_data["icons"].get("image_72")
-                )
+                avatar_url = icons.get("image_original") or icons.get("image_72")
 
             # TODO: handle channels not in the channel cache
             await self.received[self.channel_id_to_name.get(channel_id)].put(
