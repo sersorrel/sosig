@@ -110,3 +110,5 @@ class DiscordEndpoint(Endpoint):
             self.logger.info("logging out...")
             await self.client.logout()
             self.logger.info("logged out.")
+            await asyncio.gather(*senders)
+            self.logger.info("bye!")

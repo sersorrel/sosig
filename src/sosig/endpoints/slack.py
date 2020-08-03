@@ -170,3 +170,5 @@ class SlackEndpoint(Endpoint):
             self.logger.info("logging out...")
             self.rtm_client.stop()  # apparently this isn't a coroutine??
             self.logger.info("logged out.")
+            await asyncio.gather(*senders)
+            self.logger.info("bye!")
