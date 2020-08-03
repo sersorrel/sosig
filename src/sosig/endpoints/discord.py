@@ -80,15 +80,13 @@ class DiscordEndpoint(Endpoint):
         self.webhook_ids.add(webhook.id)
         while True:
             message = await queue.get()
-            text = (
-                message.text
-                if message.thread_id is None
-                else "[thread] " + message.text
-            )
+            text = message.text or "<empty message (image upload?)>"
+            if message.thread_id is not None:
+                text = "[thread] " + text
             self.logger.info("sending message: %s", message)
             try:
                 await webhook.send(
-                    message.text,
+                    text,
                     **{
                         x: y
                         for x, y in {

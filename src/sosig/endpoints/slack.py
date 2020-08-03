@@ -138,7 +138,7 @@ class SlackEndpoint(Endpoint):
                 await self.web_client.chat_postMessage(
                     channel=channel_id,
                     as_user=False,
-                    text=message.text,
+                    text=message.text or "<empty message (image upload?)>",
                     **{
                         x: y
                         for x, y in {
