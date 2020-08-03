@@ -134,19 +134,22 @@ class SlackEndpoint(Endpoint):
         while True:
             message = await queue.get()
             self.logger.info("sending message: %s", message)
-            await self.web_client.chat_postMessage(
-                channel=channel_id,
-                as_user=False,
-                text=message.text,
-                **{
-                    x: y
-                    for x, y in {
-                        "username": message.username,
-                        "icon_url": message.avatar_url,
-                    }.items()
-                    if y is not None
-                },
-            )
+            try:
+                await self.web_client.chat_postMessage(
+                    channel=channel_id,
+                    as_user=False,
+                    text=message.text,
+                    **{
+                        x: y
+                        for x, y in {
+                            "username": message.username,
+                            "icon_url": message.avatar_url,
+                        }.items()
+                        if y is not None
+                    },
+                )
+            except Exception:
+                self.logger.exception("couldn't send message, ignoring")
             queue.task_done()
 
     async def run(self) -> None:

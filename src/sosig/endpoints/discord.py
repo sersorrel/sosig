@@ -80,23 +80,26 @@ class DiscordEndpoint(Endpoint):
         self.webhook_ids.add(webhook.id)
         while True:
             message = await queue.get()
-            self.logger.info("sending message: %s", message)
             text = (
                 message.text
                 if message.thread_id is None
                 else "[thread] " + message.text
             )
-            await webhook.send(
-                message.text,
-                **{
-                    x: y
-                    for x, y in {
-                        "username": message.username,
-                        "avatar_url": message.avatar_url,
-                    }.items()
-                    if y is not None
-                },
-            )
+            self.logger.info("sending message: %s", message)
+            try:
+                await webhook.send(
+                    message.text,
+                    **{
+                        x: y
+                        for x, y in {
+                            "username": message.username,
+                            "avatar_url": message.avatar_url,
+                        }.items()
+                        if y is not None
+                    },
+                )
+            except Exception:
+                self.logger.exception("couldn't send message, ignoring")
             queue.task_done()
 
     async def run(self) -> None:
