@@ -133,6 +133,12 @@ class SlackEndpoint(Endpoint):
         self.logger.debug("starting sender for channel %s (%s)", channel, channel_id)
         while True:
             message = await queue.get()
+            # TODO: is this comprehensive? (also: it sucks)
+            text = message.text
+            text = text.replace("<!everyone>", "@\u200ceveryone")
+            text = text.replace("<!channel>", "@\u200cchannel")
+            text = text.replace("<!here>", "@\u200chere")
+            message = message._replace(text=text)
             self.logger.info("sending message: %s", message)
             try:
                 await self.web_client.chat_postMessage(

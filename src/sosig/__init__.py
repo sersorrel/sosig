@@ -11,7 +11,7 @@ from typing import Any, Dict, List, NoReturn, Set, Tuple, Type, TypeVar
 import tomlkit
 
 import sosig.endpoints
-from sosig.endpoints.base import Endpoint
+from sosig.endpoints.base import Endpoint, Message
 
 __all__ = ["main"]
 
@@ -45,12 +45,22 @@ class DevNullQueue(asyncio.Queue):
         pass
 
 
-async def broadcaster(source: asyncio.Queue[T], *dests: asyncio.Queue[T]) -> NoReturn:
+async def broadcaster(
+    source: asyncio.Queue[Message], *dests: asyncio.Queue[Message],
+) -> NoReturn:
     logging.getLogger(__name__ + ".broadcaster").debug(
         "starting broadcaster from %r to %r", source, dests
     )
     while True:
         msg = await source.get()
+        # TODO: remove this processing step (it should probably be the
+        # responsibility of endpoints to not inadvertently ping people,
+        # plus this will potentially subtly break codeblocks).
+        text = msg.text
+        text = text.replace("@everyone", "@\u200ceveryone")
+        text = text.replace("@channel", "@\u200cchannel")
+        text = text.replace("@here", "@\u200chere")
+        msg = msg._replace(text=text)
         for dest in dests:
             await dest.put(msg)
         source.task_done()
