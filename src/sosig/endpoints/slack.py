@@ -152,11 +152,13 @@ class SlackEndpoint(Endpoint):
         self.logger.debug("starting sender for channel %s (%s)", channel, channel_id)
         while True:
             message = await queue.get()
-            # TODO: is this comprehensive? (also: it sucks)
             text = message.text
-            text = text.replace("<!everyone>", "@\u200ceveryone")
-            text = text.replace("<!channel>", "@\u200cchannel")
-            text = text.replace("<!here>", "@\u200chere")
+            for pattern, replacement in [
+                (r"<", "&lt;"),
+                (r">", "&gt;"),
+                (r"&", "&amp;"),
+            ]:
+                text = re.sub(pattern, replacement, text)
             message = message._replace(text=text)
             self.logger.info("sending message: %s", message)
             try:
@@ -164,6 +166,7 @@ class SlackEndpoint(Endpoint):
                     channel=channel_id,
                     as_user=False,
                     text=message.text or "<empty message (image upload?)>",
+                    link_names=False,
                     **{
                         x: y
                         for x, y in {
