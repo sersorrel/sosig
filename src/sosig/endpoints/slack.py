@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Dict, Mapping, MutableMapping
 
 import slack
@@ -107,6 +108,24 @@ class SlackEndpoint(Endpoint):
                 icons.update(data.get("icons", {}))
                 username = data.get("username") or bot_data["name"]
                 avatar_url = icons.get("image_original") or icons.get("image_72")
+
+            for pattern, replacement in [
+                (r"<#(C[^|]+)\|([^>]+)>", lambda m: f"#{m.group(2)}"),
+                # TODO: look up user IDs and group IDs
+                (r"<@([UW][^>]+)>", lambda m: f"@<user with id {m.group(1)}>"),
+                (r"<!subteam^([^>]+)>", lambda m: f"@<group with id {m.group(1)}>"),
+                (
+                    r"<!date^(?P<timestamp>[^^]+)^(?P<format>[^^]+)(?:^(P<link>[^|]+))?\|(?P<text>[^>]+)>",
+                    lambda m: m.group("text"),
+                ),
+                (r"<!here(|here)?>", "@here"),
+                (r"<!channel>", "@channel"),
+                (r"<!everyone>", "@everyone"),
+                (r"&lt;", "<"),
+                (r"&gt;", ">"),
+                (r"&amp;", "&"),
+            ]:
+                text = re.sub(pattern, replacement, text)
 
             # TODO: handle channels not in the channel cache
             await self.received[self.channel_id_to_name.get(channel_id)].put(
