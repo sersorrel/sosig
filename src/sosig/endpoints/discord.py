@@ -24,13 +24,27 @@ class DiscordEndpoint(Endpoint):
 
         @self.client.event
         async def on_message(message: discord.Message) -> None:
+            self.logger.debug("on_message: %s", message)
             if (
                 message.author == self.client.user
                 or message.author.id in self.webhook_ids
             ):
                 # Ignore all messages we send. No exceptions.
-                self.logger.debug("ignoring own message")
+                self.logger.debug(
+                    "ignoring own message (%s == %s or %s in %s)",
+                    message.author,
+                    self.client.user,
+                    message.author.id,
+                    self.webhook_ids,
+                )
                 return
+            self.logger.debug(
+                "not ignoring message, author is %s (we are %s) and author id is %s (our webhooks are %s)",
+                message.author,
+                self.client.user,
+                message.author.id,
+                self.webhook_ids,
+            )
             if message.channel.name not in self.received:
                 # Ignore all messages not in channels we're bridging.
                 # TODO: revisit this, we may want to allow commands in channels where we're only sending messages (not listening).
@@ -40,7 +54,9 @@ class DiscordEndpoint(Endpoint):
                 self.logger.debug("responding to bridge command %s", message)
                 await message.channel.send("Bridge status: up!")
                 return
-            self.logger.debug("bridging message: %s", message)
+            self.logger.debug(
+                "received message: %s (content: %s)", message, message.content
+            )
             await self.received[message.channel.name].put(
                 Message(
                     text=message.content,
