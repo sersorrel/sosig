@@ -50,16 +50,16 @@ class DiscordEndpoint(Endpoint):
                 # TODO: revisit this, we may want to allow commands in channels where we're only sending messages (not listening).
                 self.logger.debug("ignoring message to %s", message.channel.name)
                 return
-            if message.content.startswith("!bridge"):
+            if message.clean_content.startswith("!bridge"):
                 self.logger.debug("responding to bridge command %s", message)
                 await message.channel.send("Bridge status: up!")
                 return
             self.logger.debug(
-                "received message: %s (content: %s)", message, message.content
+                "received message: %s (content: %r)", message, message.clean_content
             )
             await self.received[message.channel.name].put(
                 Message(
-                    text=message.content,
+                    text=message.clean_content,
                     username=message.author.display_name,
                     avatar_url=str(message.author.avatar_url).replace(
                         ".webp", ".png"  # TODO: oh no this is awful
