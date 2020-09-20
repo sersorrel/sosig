@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import textwrap
 from typing import Set
 
@@ -54,9 +55,14 @@ class IRCClient(pydle.Client):
             "received message: %s", message,
         )
 
+        # Strip IRC formatting - see https://modern.ircdocs.horse/formatting.html for an overview of the formatting.
+        # also see https://stackoverflow.com/questions/10567701/regex-replace-of-mirc-colour-codes
+        message_clean = re.sub(r"[\x02\x0f\x11\x16\x1d\x1e\x1f]", "", message)
+        message_clean = re.sub(r"\x03(\d{1,2}(,\d{1,2})?)?", "", message_clean)
+
         await self.endpoint.received[target].put(
             Message(
-                text=message,
+                text=message_clean,
                 username=by,
                 avatar_url=self.endpoint.avatar_url.replace("$username", by),
             )
@@ -76,11 +82,16 @@ def mask_ping(username):
 
 
 # This is the same thing slack-irc does.
-def colorize_username(username):
+def colorize_username(username, key=None):
+    if not key:
+        key = username
+
+    colour_table = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+
     v = 5381
-    for c in username:
+    for c in key:
         v = v * 33 + ord(c)
-    return "\x03{:x}{}\x0F".format(v % 16, username)
+    return "\x03{:x}{}\x0F".format(colour_table[v % 13], username)
 
 
 class IRCEndpoint(Endpoint):
@@ -108,8 +119,6 @@ class IRCEndpoint(Endpoint):
                 text = "[thread] " + text
             self.logger.info("sending message: %s", message)
             try:
-                # XXX Do this better? ie prefix list
-                # This will break if it's >512 or whatever but who cares, the bot will also break
                 if message.text.startswith("!"):
                     self.logger.debug("Passing through command %s", message)
                     await self.client.message(
@@ -118,17 +127,19 @@ class IRCEndpoint(Endpoint):
                     await self.client.message(channel, message.text)
                     return
 
-                max_message_len = 300  # XXX don't @ me
-                # a "good" way is what pydle does internally. maybe nick it.
+                # This is currently completely arbitrary. If it becomes an issue, maybe revisit it.
+                # We can't do what pydle does because it uses an internal method to calculate the length.
+                max_message_len = 300
 
-                # XXX should we do something to pass the non-masked username into colorize? otherwise colours will differ with it enabled/not.
-                if self.mask_usernames:
+                if self.mask_usernames and message.username.lower() in (
+                    user.lower() for user in self.client.channels[channel]["users"]
+                ):
                     username = mask_ping(message.username)
                 else:
                     username = message.username
 
                 if self.colorize_username:
-                    prefix = "<%s> " % colorize_username(username)
+                    prefix = "<%s> " % colorize_username(username, key=message.username)
                 else:
                     prefix = "<%s> " % username
 
@@ -154,7 +165,7 @@ class IRCEndpoint(Endpoint):
             senders.append(asyncio.create_task(self.send_all(self.sending[c], c)))
 
         try:
-            is_ssl = self.config["ssl"]
+            is_ssl = self.config.get("ssl", True)
             hostname = str(self.config["server"])
             port = int(self.config.get("port", 6697 if is_ssl else 6667))
 
