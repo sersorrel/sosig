@@ -91,7 +91,7 @@ def colorize_username(username, key=None):
     v = 5381
     for c in key:
         v = v * 33 + ord(c)
-    return "\x03{:x}{}\x0F".format(colour_table[v % 13], username)
+    return "\x03{}{}\x0F".format(colour_table[v % len(colour_table)], username)
 
 
 class IRCEndpoint(Endpoint):
