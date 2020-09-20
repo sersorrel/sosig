@@ -10,9 +10,13 @@ from sosig.endpoints.base import Endpoint, Message
 
 
 class IRCClient(pydle.Client):
+    # Really try to reconnect.
+    RECONNECT_MAX_ATTEMPTS = None
+
     def __init__(self, *args, endpoint, **kwargs) -> None:
         self.endpoint = endpoint
         self.logger = self.endpoint.logger
+        self.done = asyncio.Event()
 
         super().__init__(*args, **kwargs)
 
@@ -23,14 +27,15 @@ class IRCClient(pydle.Client):
         for channel in self.endpoint.received:
             await self.join(channel)
 
-    async def on_message(self, target, source, message) -> None:
+    # TODO: IRC has formatting! we currently don't deal with it.
+    async def on_channel_message(self, target, by, message) -> None:
         self.logger.debug(
-            'on_message: target=%s source=%s message="%s"', target, source, message
+            'on_message: target=%s by=%s message="%s"', target, by, message
         )
 
         # Ignore all messages we send.
-        if source == self.nickname:
-            self.logger.debug("ignoring own message (%s == %s)", source, self.nickname)
+        if by == self.nickname:
+            self.logger.debug("ignoring own message (%s == %s)", by, self.nickname)
             return
 
         if target not in self.endpoint.received:
@@ -52,10 +57,30 @@ class IRCClient(pydle.Client):
         await self.endpoint.received[target].put(
             Message(
                 text=message,
-                username=source,
-                avatar_url="https://9net.org/~stary/sosig-dev.png",
+                username=by,
+                avatar_url=self.endpoint.avatar_url.replace("$username", by),
             )
         )
+
+    async def on_ctcp_action(self, by, target, contents) -> None:
+        await self.on_channel_message(target, by, "_" + contents + "_")
+
+    async def on_disconnect(self, expected) -> None:
+        await super().on_disconnect(expected)
+        if expected or not self.connected:  # ok, shut down then
+            self.done.set()
+
+
+def mask_ping(username):
+    return username[0] + "\u200C" + username[1:]
+
+
+# This is the same thing slack-irc does.
+def colorize_username(username):
+    v = 5381
+    for c in username:
+        v = v * 33 + ord(c)
+    return "\x03{:x}{}\x0F".format(v % 16, username)
 
 
 class IRCEndpoint(Endpoint):
@@ -65,6 +90,12 @@ class IRCEndpoint(Endpoint):
         self.client = IRCClient(
             self.config["nickname"], realname=self.config["realname"], endpoint=self
         )
+
+        default_url = "http://api.adorable.io/avatars/48/$username.png"
+        self.avatar_url = self.config.get("avatar_url", default_url)
+
+        self.mask_usernames = self.config.get("mask_usernames", True)
+        self.colorize_username = self.config.get("colorize_usernames", True)
 
     async def send_all(self, queue: asyncio.Queue[Message], channel) -> None:
         await self.ready.wait()
@@ -88,7 +119,18 @@ class IRCEndpoint(Endpoint):
                     return
 
                 max_message_len = 300  # XXX don't @ me
-                prefix = "<%s> " % message.username
+                # a "good" way is what pydle does internally. maybe nick it.
+
+                # XXX should we do something to pass the non-masked username into colorize? otherwise colours will differ with it enabled/not.
+                if self.mask_usernames:
+                    username = mask_ping(message.username)
+                else:
+                    username = message.username
+
+                if self.colorize_username:
+                    prefix = "<%s> " % colorize_username(username)
+                else:
+                    prefix = "<%s> " % username
 
                 if len(message.text) > max_message_len:
                     lines = textwrap.wrap(
@@ -110,20 +152,18 @@ class IRCEndpoint(Endpoint):
         senders = []
         for c in self.sending:
             senders.append(asyncio.create_task(self.send_all(self.sending[c], c)))
+
         try:
-            # XXX: bring this up with pydle maintainers lmao
-            # connect does a create_task so it's all fucked
             is_ssl = self.config["ssl"]
             hostname = str(self.config["server"])
             port = int(self.config.get("port", 6697 if is_ssl else 6667))
 
             await self.client.connect(hostname=hostname, port=port, tls=is_ssl)
+            await self.client.done.wait()
         finally:
-            pass
-            """
             self.logger.info("logging out...")
             if self.client.connected:
                 await self.client.quit("fug")
             self.logger.info("logged out.")
             await asyncio.gather(*senders)
-            self.logger.info("bye!")"""
+            self.logger.info("bye!")
