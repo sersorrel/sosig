@@ -18,9 +18,10 @@ class DiscordEndpoint(Endpoint):
 
         @self.client.event
         async def on_ready() -> None:
-            self.logger.info("logged in as %s", self.client.user)
-            self.webhook_ids = set()
-            self.ready.set()
+            if not self.ready.is_set():
+                self.logger.info("logged in as %s", self.client.user)
+                self.webhook_ids = set()
+                self.ready.set()
 
         @self.client.event
         async def on_message(message: discord.Message) -> None:
