@@ -99,7 +99,12 @@ class IRCEndpoint(Endpoint):
         super().__init__(*args, **kwargs)
         self.ready = asyncio.Event()
         self.client = IRCClient(
-            self.config["nickname"], realname=self.config["realname"], endpoint=self
+            self.config["nickname"],
+            realname=self.config["realname"],
+            endpoint=self,
+            sasl_username=self.config.get("sasl_username", None),
+            sasl_password=self.config.get("sasl_password", None),
+            sasl_identity=self.config.get("sasl_identity", ""),
         )
 
         default_url = "http://api.adorable.io/avatars/48/$username.png"
