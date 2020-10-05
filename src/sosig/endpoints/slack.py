@@ -154,9 +154,9 @@ class SlackEndpoint(Endpoint):
             message = await queue.get()
             text = message.text
             for pattern, replacement in [
+                (r"&", "&amp;"),
                 (r"<", "&lt;"),
                 (r">", "&gt;"),
-                (r"&", "&amp;"),
             ]:
                 text = re.sub(pattern, replacement, text)
             message = message._replace(text=text)
