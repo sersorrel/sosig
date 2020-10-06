@@ -2,21 +2,101 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Dict, Mapping, MutableMapping
+import time
+from collections import defaultdict
+from collections.abc import MutableMapping
+from typing import Dict, Generic, Iterator, Mapping, MutableMapping, Tuple, TypeVar
 
 import slack
 
 from sosig.endpoints.base import Endpoint, Message
 
+K = TypeVar("K")
+V = TypeVar("V")
+
+
+class ExpiredKeyError(KeyError):
+    """Mapping key expired."""
+
+
+class DecayingDict(MutableMapping[K, V]):
+    """A dictionary that forgets what's in it, after a while.
+
+    The first argument specifies the time each item should live for, in
+    seconds (defaulting to 300 seconds, or 5 minutes).
+
+    Expired items won't be discarded until they're explicitly removed
+    (with `del`) or `DecayingDict.compact()` is called.
+    """
+
+    def __init__(self, timeout: float = 300, /, *args, **kwargs) -> None:
+        if not isinstance(timeout, (int, float)):
+            raise TypeError("first argument to DecayingDict is the timeout")
+        self._timeout = timeout
+        self._data: Dict[K, Tuple[V, float]] = {}
+        tmp: Dict[K, V] = dict(*args, **kwargs)
+        for key, value in tmp.items():
+            self.__setitem__(key, value)
+
+    def __getitem__(self, key: K) -> V:
+        value, expiry = self._data[key]
+        if time.monotonic() > expiry:
+            raise ExpiredKeyError(key)
+        return value
+
+    def __setitem__(self, key: K, value: V) -> None:
+        self._data[key] = (value, time.monotonic() + self._timeout)
+
+    def __delitem__(self, key: K) -> None:
+        del self._data[key]
+
+    def __iter__(self) -> Iterator[K]:
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self._timeout}, {repr({key: value for key, (value, _) in self._data.items()})})"
+
+    def compact(self) -> None:
+        t = time.monotonic()
+        to_delete = []
+        for key, (value, expiry) in self._data.items():
+            if t > expiry:
+                to_delete.append(key)
+        for key in to_delete:
+            del self._data[key]
+
 
 class SlackEndpoint(Endpoint):
-    user_cache: MutableMapping[str, Mapping]  # key is string id
+    user_cache: DecayingDict[str, Mapping]  # key is string id
+
+    async def _get_user_profile(self, user_id: str) -> Dict:
+        assert user_id.startswith("U")
+        if user_id in self.user_cache:
+            user_data = self.user_cache[user_id]
+            profile = user_data["profile"]
+            self.logger.debug(
+                "got cached user entry with %s, %s",
+                profile.get("display_name"),
+                profile.get("real_name"),
+            )
+        else:
+            response = await self.web_client.users_info(user=user_id)
+            assert response["ok"]
+            user_data = response["user"]
+            assert user_data["id"] == user_id
+            self.user_cache[user_id] = user_data
+            self.logger.debug("got user info %s", user_data)
+            profile = user_data["profile"]
+        return profile
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.ready = asyncio.Event()
         self.rtm_client = slack.RTMClient(token=self.config["token"], run_async=True)
-        self.user_cache = {}
+        self.user_cache = DecayingDict()
 
         async def on_hello(rtm_client, web_client, data) -> None:
             self.logger.debug("HELLO with %s, %s, %s", rtm_client, web_client, data)
@@ -75,26 +155,11 @@ class SlackEndpoint(Endpoint):
             # TODO: replace this mess with something that branches on the subtype
             # TODO: work out a better way to get the highest-resolution avatar
             if user_id:
-                if user_id in self.user_cache:
-                    user_data = self.user_cache[user_id]
-                    profile = user_data["profile"]
-                    self.logger.debug(
-                        "got cached user entry with %s, %s",
-                        profile.get("display_name"),
-                        profile.get("real_name"),
-                    )
-                else:
-                    response = await self.web_client.users_info(user=user_id)
-                    assert response["ok"]
-                    user_data = response["user"]
-                    assert user_data["id"] == user_id
-                    self.user_cache[user_id] = user_data
-                    self.logger.debug("got user info %s", user_data)
-                    profile = user_data["profile"]
+                profile = await self._get_user_profile(user_id)
                 username = (
                     profile.get("display_name")
                     or profile.get("real_name")
-                    or "slack!" + user_data["id"]
+                    or "slack!" + user_id
                 )
                 avatar_url = profile.get("image_original")
             else:
@@ -109,10 +174,16 @@ class SlackEndpoint(Endpoint):
                 username = data.get("username") or bot_data["name"]
                 avatar_url = icons.get("image_original") or icons.get("image_72")
 
+            profiles: Dict[str, Dict] = {}
+            for match in re.finditer(r"<@([UW][^>]+)>", text):
+                profiles[match.group(1)] = await self._get_user_profile(match.group(1))
             for pattern, replacement in [
                 (r"<#(C[^|]+)\|([^>]+)>", lambda m: f"#{m.group(2)}"),
-                # TODO: look up user IDs and group IDs
-                (r"<@([UW][^>]+)>", lambda m: f"@<user with id {m.group(1)}>"),
+                (
+                    r"<@([UW][^>]+)>",
+                    lambda m: f"@{(profile := profiles[m.group(1)]).get('display_name') or profile.get('real_name') or 'slack!' + m.group(1)}",
+                ),
+                # TODO: look up group IDs
                 (r"<!subteam^([^>]+)>", lambda m: f"@<group with id {m.group(1)}>"),
                 (
                     r"<!date^(?P<timestamp>[^^]+)^(?P<format>[^^]+)(?:^(P<link>[^|]+))?\|(?P<text>[^>]+)>",
