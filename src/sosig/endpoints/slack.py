@@ -213,9 +213,13 @@ class SlackEndpoint(Endpoint):
                 )
             )
 
+        async def on_error(data):
+            self.logger.error("slackclient error: %s", data)
+
         # TODO: raise an issue on the slackclient repo mentioning that this sucks and the official way (run_on) sucks more
         self.rtm_client._callbacks["hello"] = [on_hello]
         self.rtm_client._callbacks["message"] = [on_message]
+        self.rtm_client._callbacks["error"] = [on_error]
 
     async def send_all(self, queue: asyncio.Queue[Message], channel) -> None:
         await self.ready.wait()
