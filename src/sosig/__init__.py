@@ -16,10 +16,9 @@ from sosig.endpoints.base import Endpoint, Message
 __all__ = ["main"]
 
 
-logging.basicConfig(
-    format="%(name)40s [%(levelname)s] %(message)s", level=logging.WARNING
-)
+logging.basicConfig(format="%(name)40s [%(levelname)s] %(message)s", level=logging.INFO)
 logging.getLogger(__name__).setLevel(logging.DEBUG)
+logging.getLogger("aiorun").setLevel(logging.DEBUG)
 
 
 T = TypeVar("T")
