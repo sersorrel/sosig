@@ -113,6 +113,9 @@ class DiscordEndpoint(Endpoint):
                         if y is not None
                     },
                 )
+            except asyncio.CancelledError:
+                self.logger.debug("sender for channel %s cancelled, exiting", channel)
+                raise
             except Exception:
                 self.logger.exception("couldn't send message, ignoring")
             queue.task_done()
@@ -125,8 +128,9 @@ class DiscordEndpoint(Endpoint):
         try:
             await self.client.start(self.config["token"])
         finally:
+            self.logger.info("begin shutdown")
             self.logger.info("logging out...")
             await self.client.logout()
-            self.logger.info("logged out.")
-            await asyncio.gather(*senders)
-            self.logger.info("bye!")
+            self.logger.info("waiting for senders...")
+            await asyncio.gather(*senders, return_exceptions=True)
+            self.logger.info("done. bye!")

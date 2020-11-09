@@ -251,6 +251,11 @@ class SlackEndpoint(Endpoint):
                         if y is not None
                     },
                 )
+            except asyncio.CancelledError:
+                self.logger.debug(
+                    "sender for channel %s (%s) cancelled, exiting", channel, channel_id
+                )
+                raise
             except Exception:
                 self.logger.exception("couldn't send message, ignoring")
             queue.task_done()
@@ -273,8 +278,9 @@ class SlackEndpoint(Endpoint):
             # Instead, we have to do it by hand:
             await asyncio.ensure_future(self.rtm_client._connect_and_read())
         finally:
-            self.logger.info("logging out...")
-            self.rtm_client.stop()  # apparently this isn't a coroutine??
-            self.logger.info("logged out.")
-            await asyncio.gather(*senders)
-            self.logger.info("bye!")
+            self.logger.info("begin shutdown")
+            self.logger.info("stopping client...")
+            await self.rtm_client.async_stop()
+            self.logger.info("waiting for senders...")
+            await asyncio.gather(*senders, return_exceptions=True)
+            self.logger.info("done. bye!")

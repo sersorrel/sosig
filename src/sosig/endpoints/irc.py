@@ -159,6 +159,9 @@ class IRCEndpoint(Endpoint):
                         await self.client.message(channel, line)
                 else:
                     await self.client.message(channel, prefix + message.text)
+            except asyncio.CancelledError:
+                self.logger.debug("sender for channel %s cancelled, exiting", channel)
+                raise
             except Exception:
                 self.logger.exception("couldn't send message, ignoring")
             queue.task_done()
@@ -177,9 +180,10 @@ class IRCEndpoint(Endpoint):
             await self.client.connect(hostname=hostname, port=port, tls=is_ssl)
             await self.client.done.wait()
         finally:
-            self.logger.info("logging out...")
+            self.logger.info("begin shutdown")
             if self.client.connected:
+                self.logger.info("sending quit...")
                 await self.client.quit("fug")
-            self.logger.info("logged out.")
-            await asyncio.gather(*senders)
-            self.logger.info("bye!")
+            self.logger.info("waiting for senders...")
+            await asyncio.gather(*senders, return_exceptions=True)
+            self.logger.info("done. bye!")
