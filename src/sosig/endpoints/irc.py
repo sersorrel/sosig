@@ -130,7 +130,8 @@ class IRCEndpoint(Endpoint):
                         channel, "Command sent from remote by %s" % message.username
                     )
                     await self.client.message(channel, message.text)
-                    return
+                    queue.task_done()
+                    continue
 
                 # This is currently completely arbitrary. If it becomes an issue, maybe revisit it.
                 # We can't do what pydle does because it uses an internal method to calculate the length.
