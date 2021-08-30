@@ -68,6 +68,9 @@ class IRCClient(pydle.Client):
             )
         )
 
+    async def on_channel_notice(self, target, by, contents) -> None:
+        await self.on_channel_message(target, by, "*" + contents + "*")
+
     async def on_ctcp_action(self, by, target, contents) -> None:
         await self.on_channel_message(target, by, "_" + contents + "_")
 
