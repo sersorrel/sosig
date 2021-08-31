@@ -152,17 +152,18 @@ class IRCEndpoint(Endpoint):
                 else:
                     prefix = "<%s> " % username
 
-                if len(message.text) > max_message_len:
-                    lines = textwrap.wrap(
-                        message.text,
-                        width=max_message_len,
-                        initial_indent=prefix,
-                        subsequent_indent=prefix,
-                    )
-                    for line in lines:
-                        await self.client.message(channel, line)
-                else:
-                    await self.client.message(channel, prefix + message.text)
+                for line in message.text.splitlines():
+                    if len(line) + len(prefix) > max_message_len:
+                        wrapped_lines = textwrap.wrap(
+                            line,
+                            width=max_message_len,
+                            initial_indent=prefix,
+                            subsequent_indent=prefix,
+                        )
+                        for wrapped_line in wrapped_lines:
+                            await self.client.message(channel, wrapped_line)
+                    else:
+                        await self.client.message(channel, prefix + line)
             except asyncio.CancelledError:
                 self.logger.debug("sender for channel %s cancelled, exiting", channel)
                 raise
