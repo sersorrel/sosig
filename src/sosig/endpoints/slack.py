@@ -107,6 +107,7 @@ class SlackEndpoint(Endpoint):
             cursor = None
             while cursor is not DONE:
                 r = await self.web_client.conversations_list(
+                    types="public_channel,private_channel",
                     **({"cursor": cursor} if cursor else {})
                 )
                 self.logger.debug("got conversations list: %s", r)
