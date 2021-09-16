@@ -7,7 +7,7 @@ from collections import defaultdict
 from collections.abc import MutableMapping
 from typing import Dict, Generic, Iterator, Mapping, MutableMapping, Tuple, TypeVar
 
-import slack
+import slack_sdk.rtm
 
 from sosig.endpoints.base import Endpoint, Message
 
@@ -95,7 +95,7 @@ class SlackEndpoint(Endpoint):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.ready = asyncio.Event()
-        self.rtm_client = slack.RTMClient(token=self.config["token"], run_async=True)
+        self.rtm_client = slack_sdk.rtm.RTMClient(token=self.config["token"], run_async=True)
         self.user_cache = DecayingDict()
 
         async def on_hello(rtm_client, web_client, data) -> None:
