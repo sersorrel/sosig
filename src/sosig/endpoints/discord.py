@@ -62,9 +62,9 @@ class DiscordEndpoint(Endpoint):
                 Message(
                     text=message.clean_content,
                     username=message.author.display_name,
-                    avatar_url=str(message.author.avatar_url).replace(
-                        ".webp", ".png"  # TODO: oh no this is awful
-                    ),
+                    avatar_url=str(message.author.avatar_url)
+                    .replace(".webp", ".png")
+                    .replace(".gif", ".png"),
                 )
             )
 
