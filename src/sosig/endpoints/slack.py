@@ -214,7 +214,7 @@ class SlackEndpoint(Endpoint):
                 )
             )
 
-        async def on_error(data):
+        async def on_error(rtm_client, web_client, data):
             self.logger.error("slackclient error: %s", data)
 
         # TODO: raise an issue on the slackclient repo mentioning that this sucks and the official way (run_on) sucks more
